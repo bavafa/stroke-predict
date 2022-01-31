@@ -1,0 +1,255 @@
+---
+title: "Stroke_html"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Get the data from the xlsx data set provided
+# Load libraries
+```{r lib, echo=FALSE}
+library(rms)
+library(tidyverse)
+library(readr)
+library("openxlsx")
+
+# get dataset from the xlsx
+df <- read.xlsx("/data/stroke1.xlsx", sheet = 1)
+```
+
+## Converting categorical variables coded as numeric,to a factor to indicate that they should be treated as a categorical variable in the model
+```{r factor, echo=FALSE}
+df$gender <- factor(df$gender)
+df$hypertension <- factor(df$hypertension)
+df$heart_disease <- factor(df$heart_disease)
+df$ever_married <- factor(df$ever_married)
+df$work_type <- factor(df$work_type)
+df$Residence_type <- factor(df$Residence_type)
+df$smoking_status <- factor(df$smoking_status)
+df$age = as.numeric(as.character(df$age))
+df$avg_glucose_level = as.numeric(as.character(df$avg_glucose_level))
+df$bmi = as.numeric(as.character(df$bmi))
+```
+
+# A quick description of the data set to check where we have missing values and if there is any anomalies
+```{r descdata, echo=FALSE}
+d <- describe(df)
+html(d, size = 80, scroll = TRUE)
+```
+
+## Produce a two-way contingency table of some predictors and outcome
+## This helps to ensure there are not 0 cells and gives us an overview of the data
+```{r catplot, echo=FALSE}
+xtabs(~stroke + gender, data = df)
+xtabs(~stroke + hypertension, data = df)
+xtabs(~stroke + heart_disease, data = df)
+xtabs(~stroke + ever_married, data = df)
+xtabs(~stroke + work_type, data = df)
+xtabs(~stroke + Residence_type, data = df)
+xtabs(~stroke + smoking_status, data = df)
+```
+
+## Prepare the data
+```{r selectpred, echo=FALSE}
+# List of names of variables to analyze
+v <- c('stroke','gender','age','hypertension','heart_disease','ever_married',
+       'work_type','Residence_type','avg_glucose_level','bmi','smoking_status')
+strok <- df[, v]
+
+# For our purposes we are going to pretend we have a complete dataset and drop cases with missing values.
+# strok_na is our cleaned data set from now on
+strok_na <- na.omit(strok)
+```
+
+# Get a quick description of cleaned data (after NA omission)
+```{r descdata, echo=FALSE}
+ds <- describe(strok_na)
+html(ds, size = 80, scroll = TRUE)
+```
+
+# Summarize the data more formally
+```{r summarize, echo=FALSE}
+s = summary(gender + age + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + bmi + smoking_status ~ stroke, data = strok_na, overall = TRUE)
+
+
+html(s, caption='Predictors for Stroke',
+     exclude1 = TRUE, npct = 'both', digits = 2,
+     prmsd = TRUE, brmsd = TRUE, msdsize = mu$smaller2)
+```
+
+
+# Visualize the relationship between the continuous variables and the outcome to assess linearity using Histspike bins
+```{r seelin, echo=FALSE}
+# datadist function computes statistical summaries of predictors to  automate 
+# estimation and plotting of effects
+
+dd <- datadist(strok_na)
+options(datadist = "dd")
+
+age_plot <- ggplot(strok_na, aes(x = age, y = stroke)) +
+  histSpikeg(stroke ~ age, lowess = TRUE, data = strok_na) +
+  labs(x = "\nAge", y = "Stroke Probability\n")
+
+gluc_plot <- ggplot(strok_na, aes(x = avg_glucose_level, y = stroke)) +
+  histSpikeg(stroke ~ avg_glucose_level, lowess = TRUE, data = strok_na) +
+  labs(x = "\nAvg. Glucose Level", y = "Stroke Probability\n")
+
+bmi_plot <- ggplot(strok_na, aes(x = bmi, y = stroke)) +
+  histSpikeg(stroke ~ bmi, lowess = TRUE, data = strok_na) +
+  labs(x = "\nBMI Index", y = "Stroke Probability\n")
+
+age_plot
+gluc_plot
+bmi_plot
+```
+
+# Simple Logestic Regression model
+```{r seepoly, echo=FALSE}
+simp_reg <- lrm(stroke ~ gender + age + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + bmi + smoking_status, data = strok_na, x=TRUE, y= TRUE) 
+print(simp_reg)
+```
+
+# Logestic Regression model with quadratic term for age
+```{r seepoly, echo=FALSE}
+quad_age <- lrm(stroke ~ gender + poly(age, 2) + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + bmi + smoking_status, data = strok_na, x=TRUE, y= TRUE) 
+print(quad_age)
+```
+
+# Logestic Regression model with quadratic term for bmi
+```{r seepoly, echo=FALSE}
+quad_bmi <- lrm(stroke ~ gender + age + poly(bmi, 2) + hypertension + heart_disease + ever_married + work_type + Residence_type + avg_glucose_level + smoking_status, data = strok_na, x=TRUE, y= TRUE) 
+print(quad_bmi)
+```
+
+# Investigating the interaction between being married and glucose level
+```{r seeinter, echo=FALSE}
+married_gluc <- lrm(stroke ~ gender + age + ever_married*avg_glucose_level + hypertension + heart_disease + work_type + Residence_type + bmi + smoking_status, data = strok_na, x=TRUE, y= TRUE) 
+print(married_gluc)
+```
+
+# Investigating the interaction between bmi & smoking status
+```{r seeinter, echo=FALSE}
+bmi_smoke <- lrm(stroke ~ gender + age + ever_married + avg_glucose_level + hypertension + heart_disease + bmi*smoking_status + work_type + Residence_type, data = strok_na, x=TRUE, y= TRUE) 
+print(bmi_smoke)
+```
+
+# Use histspike to look at stroke probability for Avg glucose level and heart disease
+```{r suspint, echo=FALSE}
+y1 <- ylab(NULL)
+suspint <- ggplot(strok_na, aes(x = avg_glucose_level, y = stroke, color=heart_disease)) +
+  histSpikeg(stroke ~ avg_glucose_level + heart_disease, lowess = TRUE, data = strok_na) +
+  ylim(0, 1) + y1
+suspint
+```
+
+# Use histspike to look at stroke probability for bmi and heart disease
+```{r suspint, echo=FALSE}
+y2 <- ylab(NULL)
+suspint <- ggplot(strok_na, aes(x = bmi, y = stroke, color=heart_disease)) +
+  histSpikeg(stroke ~ bmi + heart_disease, lowess = TRUE, data = strok_na) +
+  ylim(0, 1) + y2
+suspint
+```
+
+# Assess multicolinearity of linear model
+```{r multicol, echo=FALSE}
+# The VIF function in RMS Computes variance inflation factors from the covariance matrix of parameter estimates
+# RMS VIF will provide estimates for categorical variables
+vif(simp_reg)
+```
+
+# Assess multicolinearity of the interaction model
+```{r multicol, echo=FALSE}
+# The VIF function in RMS Computes variance inflation factors from the covariance matrix of parameter estimates
+# RMS VIF will provide estimates for categorical variables
+vif(married_gluc)
+```
+
+# Look at correlations to look into high VIF variables
+```{r seecorr, echo=FALSE}
+rcorr(as.matrix(strok_na))
+```
+
+# Remove the variable work_type due to lower significance compared to other factors
+```{r rembar, echo=FALSE}
+remov_work <- lrm(stroke ~ gender + age + bmi + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + smoking_status, data = strok_na, x=TRUE, y= TRUE) 
+```
+
+# Reassess multicolinearity
+```{r multicol, echo=FALSE}
+# The VIF function in RMS Computes variance inflation factors from the covariance matrix of parameter estimates
+# RMS VIF will provide estimates for categorical variables
+vif(remov_work)
+```
+
+# This is our working model now
+```{r workmod, echo=FALSE}
+work_mod <- lrm(stroke ~ gender + age + bmi + hypertension + heart_disease + ever_married + Residence_type + avg_glucose_level + smoking_status, data = strok_na, x=TRUE, y= TRUE) 
+```
+
+# Check for infuential observations
+```{r checkinfl, echo=FALSE}
+# The which.influence function creates a list with a component for each  factor  in the model. Each component# contains the observation identifiers of all observations that are “overly influential” with respect to that factor, where |dfbetas| > u. The default u is .2. 
+u2 <- which.influence (work_mod, .4) 
+print(u2)
+```
+
+## DATA REDUCTION 
+
+# Variable selection
+
+# Use the fastbw funtion to perform fast backward stepwise selection
+```{r var_sel, echo=FALSE}
+fastbw(work_mod)
+```
+
+# Describe the model
+# Running the final selected model final_model
+# We decided to keep the age & average glucodse level as the main 2 predictors that we wer allowed to use in the model
+# Quadratic and interaction terms prooved to be insignificant compared to these 2 factors
+```{r final_mod, echo=FALSE}
+final_model <- lrm(stroke ~ age + avg_glucose_level, data = strok_na, , x=TRUE, y= TRUE)
+print(final_model)
+# Exponentiate the coefficients to get odds ratios
+exp(coef(final_model))
+```
+
+# Use the bootstrap to study the uncertainty in the selection of variables and to penalize for this uncertainty when estimating predictive performance of the model
+# Use the original working model, prior to variable selection so we go through the same process of selecting final predictors using backward variable selection for every bootstrap sample
+```{r val_final, echo=FALSE}
+# Update will update and (by default) re-fit a model. 
+# x - causes the expanded design matrix (with missings excluded) to be returned under the name x. For print, an object created by lrm.
+# y- causes the response variable (with missings excluded) to be returned under the name y.
+work_mod <- update (work_mod, x=TRUE, y=TRUE)  
+val <- validate(work_mod, B=200, bw=TRUE) 
+print(val, B=50, digits =3) 
+```
+
+# Assesing the calibration quality of the model
+# As we can see the prediction roughly matches the real values which is good
+```{r cal_final, echo=FALSE}
+cal <- calibrate(work_mod, B =200)
+plot(cal)
+```
+
+## You can use the the optimism-corrected slope in the validate output to adjust the original prediction model for optimism
+# calculating the shrinkage factor
+```{r opt_corr, echo=FALSE}
+shrinkage.factor <- val["Slope","index.corrected"]
+# multipling the model coefficients (except intercept) by the shrinkage factor (the optimism-corrected slope)
+corr_coef <- data.frame(Original = coef(final_model), shrunk.boot = c(coef(final_model)[1], coef(final_model)[-1] * shrinkage.factor))
+round(corr_coef, 3)
+```
+
+
+
+# The following code allows you to get a plot of the probabilities that a candy is chocolate by winpercent (these are not bias-corrected estimates)
+```{r exp_int, echo=FALSE}
+# datadist function computes statistical summaries of predictors to  automate estimation and plotting of effects
+dd <- datadist(strok_na); options(datadist='dd')
+prob <- Predict(final_model, age , avg_glucose_level,  fun=plogis)
+
+ggplot (prob)
+```
